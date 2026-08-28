@@ -1,0 +1,17 @@
+{
+  "name": "cforge",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "install:all": "npm install --prefix frontend && npm install --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:backend": "npm run dev --prefix backend",
+    "build": "npm run build --prefix frontend && npm run build --prefix backend",
+    "audit:frontend": "npm run build --prefix frontend",
+    "audit:backend": "npm run build --prefix backend"
+  },
+  "engines": {
+    "node": ">=20.19.0",
+    "npm": ">=10"
+  }
+}

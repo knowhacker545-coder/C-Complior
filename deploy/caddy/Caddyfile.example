@@ -1,0 +1,17 @@
+# Replace the example hostnames below with your real domains before deployment.
+YOUR_FRONTEND_DOMAIN {
+    root * /opt/cforge/frontend/dist
+    encode gzip zstd
+    try_files {path} /index.html
+    header {
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+    }
+    file_server
+}
+
+YOUR_API_DOMAIN {
+    reverse_proxy 127.0.0.1:3001
+}

@@ -1,0 +1,24 @@
+[Unit]
+Description=CForge compiler API
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=cforge
+Group=cforge
+WorkingDirectory=/opt/cforge/backend
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/cforge/.env
+ExecStart=/usr/bin/node /opt/cforge/backend/dist/server.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/cforge
+
+[Install]
+WantedBy=multi-user.target

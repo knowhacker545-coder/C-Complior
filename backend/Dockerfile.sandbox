@@ -1,0 +1,12 @@
+FROM gcc:14-bookworm@sha256:b99b86a28812b1e6453a231a947dc43d76fe192788a12f344a9b568bf9f5d24c
+
+# Verified multi-platform digest for the gcc:14-bookworm / gcc:14.2.0-bookworm image index.
+
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin cforge
+WORKDIR /workspace
+RUN chown 10001:10001 /workspace
+USER 10001:10001
+
+# The runtime command is supplied by the backend. This image contains only the
+# compiler/runtime toolchain and a non-root user; containers are further
+# restricted by docker run flags in compiler.ts.
