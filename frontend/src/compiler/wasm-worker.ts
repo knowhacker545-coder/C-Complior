@@ -30,6 +30,41 @@ function log(...args: unknown[]) {
   console.debug('[WASM]', ...args);
 }
 
+// --- llvm.core4.wasm data: URI workaround ---------------------------------
+// @yowasp/clang's generated bundle loads its four LLVM core modules via
+// `new URL('./llvm.core*.wasm', import.meta.url)`. Three of the four are
+// emitted by the production build as real same-origin asset files;
+// llvm.core4.wasm (787 bytes) is instead baked into the built JS as a
+// literal `data:application/wasm;base64,...` string — confirmed by
+// inspecting dist/assets directly, this happens regardless of
+// `build.assetsInlineLimit`, so it is not standard Vite asset inlining we
+// can configure away. @yowasp/clang's entire public API (RunOptions in
+// node_modules/@yowasp/clang/lib/api.d.ts) has no option to override where
+// resources are fetched from, so the package can't be told to use a
+// different URL for it either.
+//
+// Fetching a data: URL is subject to CSP's connect-src, which would
+// otherwise have to be widened. Instead we keep our own verbatim copy of
+// this one small file at public/wasm/llvm.core4.wasm (a real, same-origin,
+// Vite-managed static asset — re-copy it from
+// node_modules/@yowasp/clang/gen/llvm.core4.wasm if @yowasp/clang is ever
+// upgraded) and intercept just the one fetch() call that would otherwise
+// hit the inlined data: URI, redirecting it to our own copy. No package
+// internals are modified, and every other fetch this worker makes (the
+// three real llvm.core*.wasm files and the LLVM resources tar) passes
+// through completely untouched.
+const LLVM_CORE4_ASSET_URL = `${import.meta.env.BASE_URL}wasm/llvm.core4.wasm`;
+const nativeFetch = self.fetch.bind(self);
+self.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  if (url.startsWith('data:application/wasm')) {
+    log('redirecting inlined llvm.core4.wasm data: URI to same-origin asset');
+    return nativeFetch(LLVM_CORE4_ASSET_URL, init);
+  }
+  return nativeFetch(input, init);
+}) as typeof fetch;
+// --- end workaround --------------------------------------------------------
+
 /**
  * Thrown when a specific, identifiable stage of compiler bring-up fails, so
  * callers can distinguish "the package/its WASM assets never loaded" from an
