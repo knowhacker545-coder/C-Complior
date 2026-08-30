@@ -1,16 +1,16 @@
 # CForge — Free Online C Compiler
 
-CForge is a public, free online C learning and compilation workspace. It lets visitors write C code in Monaco, compile it with a real GCC toolchain, run programs with stdin, inspect compiler/runtime output, and explore a library of working C examples.
+CForge is a public, free online C learning and compilation workspace. It lets visitors write C code in Monaco, compile it with a real Clang/LLVM toolchain compiled to WebAssembly, run programs with stdin, inspect compiler/runtime output, and explore a library of working C examples.
 
 CForge requires no login, signup, or account.
 
-> **Production note:** CForge executes arbitrary C code. The backend must run on infrastructure where Docker sandboxing is available and correctly configured. Do not expose compiler containers or the Docker socket to the public internet.
+> **Production note:** Normal C compilation and execution are browser-local. The legacy backend/Docker compiler is not required by the public Vercel frontend.
 
 ## Features
 
 - Monaco-based C editor
 - C11 syntax highlighting and editor tooling
-- Real GCC compilation and execution
+- Real Clang/LLVM compilation and WebAssembly execution
 - Program stdin support
 - Compiler/runtime output, exit code, and execution time
 - Monaco compiler-error markers
@@ -25,34 +25,23 @@ CForge requires no login, signup, or account.
 
 ## Architecture
 
-Recommended public architecture:
+Normal compilation and execution are browser-local:
 
 ```text
-https://${FRONTEND_DOMAIN}
-        |
-        v
-   Frontend (static)
-        |
-        | HTTPS / JSON
-        v
-https://${API_DOMAIN}
-        |
-        v
-  Node.js + Express
-        |
-        | local Docker CLI / daemon access
-        v
- Dedicated compiler host
-        |
-        v
- Fresh restricted container per job
-        |
-        +--> GCC 14 / C11
+Vercel
+  ↓
+CForge Frontend
+  ↓
+Web Worker
+  ↓
+YoWASP Clang/LLVM compiled to WebAssembly
+  ↓
+WASI virtual filesystem / runtime
+  ↓
+stdout / stderr / exit status
 ```
 
-The compiler host is private. The public frontend talks to the API over HTTPS. The API starts short-lived sandbox containers. The sandbox containers themselves have no network access and no host filesystem mounts.
-
-For a hardened deployment, put the API and Docker daemon on a dedicated VM/host and keep the Docker control plane off the public network. Do not mount `/var/run/docker.sock` into an internet-facing application container.
+The Node.js/Express + Docker backend is no longer required for normal compiler operations. It may remain in the repository for legacy/future server-side use, but the public frontend does not call `/api/run` or `/api/compile` for normal Run/Compile actions.
 
 ## Technology stack
 
@@ -74,9 +63,12 @@ For a hardened deployment, put the API and Docker daemon on a dedicated VM/host 
 
 ### Compiler infrastructure
 
-- Docker
-- GCC 14
+- YoWASP `@yowasp/clang` `22.0.0-git20542-10`
+- LLVM/Clang 22 WebAssembly/WASI toolchain
+- `@bjorn3/browser_wasi_shim` 0.4.2 for browser-side WASI
 - C11 (`-std=c11`)
+
+YoWASP Clang is a real Clang/LLVM toolchain compiled to WebAssembly and capable of compiling C code in the browser. It produces a `wasm32-unknown-wasip1` executable that is then executed through a browser WASI shim. citeturn4search1turn4search5
 
 ## Project structure
 
@@ -115,7 +107,9 @@ Requirements:
 
 - Node.js 22.12+ recommended
 - npm
-- Docker Engine on the private compiler host
+- A modern browser with WebAssembly and Web Workers support
+
+Docker is not required for the public frontend compiler path.
 
 Install project dependencies:
 
@@ -123,15 +117,7 @@ Install project dependencies:
 npm run install:all
 ```
 
-Build the sandbox image on the compiler host:
-
-```bash
-docker build -f backend/Dockerfile.sandbox -t cforge-sandbox:gcc14-c11 backend
-```
-
-Create the backend environment from `.env.example` and keep real environment files out of Git.
-
-For the frontend, copy `frontend/.env.development.example` to `frontend/.env.development` for local development, or `frontend/.env.production.example` to `frontend/.env.production` for a production build.
+For the frontend, set `VITE_SITE_URL` in the Vercel project or local shell. No compiler API URL is required for normal Run/Compile operations.
 
 ## Clean installation and lockfiles
 
@@ -192,23 +178,33 @@ npm start
 
 Serve `frontend/dist` from a static web host/CDN. Run the backend as a long-lived service on the private compiler host behind an HTTPS reverse proxy.
 
-Do not run arbitrary C programs directly on the frontend host. The production frontend build requires a real `VITE_SITE_URL` and `VITE_API_URL`; these are build-time configuration values, not secrets.
+The production frontend build requires a real `VITE_SITE_URL`; this is public build-time configuration, not a secret. `VITE_API_URL` is not required for normal browser compilation.
 
 ## Compiler
 
-CForge uses real GCC inside a Docker sandbox. Compilation uses:
+The browser compiler uses real Clang/LLVM 22 through YoWASP. Source is compiled with `-std=c11` into a WebAssembly/WASI program and executed locally in a Worker. The toolchain is not a native GCC environment, so diagnostics, ABI details, filesystem behavior, and platform-specific functionality can differ from Linux GCC. citeturn4search1turn9search6
 
-```text
-gcc /workspace/main.c -std=c11 -O0 -Wall -Wextra -o /workspace/main
-```
+### Supported standard library
 
-Programs are not simulated. Successful runs execute the resulting binary inside the restricted container.
+C standard-library support comes from the WASI libc/sysroot bundled with the Clang toolchain. Common educational programs using `stdio.h`, `stdlib.h`, `string.h`, `ctype.h`, and math functions should be verified against the actual browser build before being promised as supported. Native OS headers and APIs are not part of the browser environment.
 
-### C standard
+### Runtime limits
 
-The current compiler target is **C11** using GCC's `-std=c11` option. The GCC image should be promoted from a verified immutable image/digest in production rather than relying indefinitely on a mutable base tag.
+- Worker timeout: 10 seconds
+- Output limit: 1 MB
+- WebAssembly linear-memory target: 256 MB maximum where supported by the generated module
+- Virtual/in-memory filesystem only
+- No arbitrary browser network access from the C program
 
-## Sandbox
+The limits above are browser/WASM controls and are not equivalent to Linux cgroups or Docker limits.
+
+## Legacy backend / sandbox
+
+`backend/` and `backend/Dockerfile.sandbox` are retained as legacy server-side infrastructure. They are **not used by the normal browser compiler path**. The frontend does not require Docker, a Docker socket, Render, or another compiler server to compile and run ordinary C programs.
+
+For browser execution, the WASI shim exposes only the virtual resources explicitly configured by CForge. The real user filesystem, backend private services, and application secrets are not mounted into the C program.
+
+
 
 Every compile/run request is assigned a fresh container. The current configuration includes:
 
@@ -303,132 +299,45 @@ Each resource contains actual C source code and can be opened directly in Monaco
 
 ## Deployment
 
-### 1. Frontend deployment
+### Vercel frontend
 
-Build the frontend and publish `frontend/dist` with a static hosting provider or CDN.
-
-Set:
+Set the Vercel project root to `frontend/` and use the standard Vite commands:
 
 ```text
-VITE_API_URL=https://${API_DOMAIN}
+Install Command: npm ci
+Build Command: npm run build
+Output Directory: dist
 ```
 
-This value is public configuration, not a secret.
+Set the public frontend URL at build time:
 
-Configure SPA fallback so `/`, `/resources`, `/docs`, and `/about` resolve to the frontend entry point.
+```text
+VITE_SITE_URL=https://your-real-domain.example
+```
 
-### 2. Backend deployment
+For local build verification only, a placeholder is acceptable:
 
-Use a Linux VM/host with Docker Engine installed. Copy the backend source, install dependencies, build TypeScript, configure the environment, and run the Node service behind a reverse proxy.
-
-Example:
-
-```bash
-cd backend
-npm install
+```powershell
+$env:VITE_SITE_URL="https://example.com"
+npm ci
 npm run build
-NODE_ENV=production npm start
 ```
 
-### 3. Compiler infrastructure
+Do not add `VITE_API_URL` just to make the browser compiler work; normal Compile/Run operations do not call the legacy backend.
 
-Build the sandbox image:
+Vercel serves static `.wasm` assets with the appropriate WebAssembly MIME type when they are emitted as build assets. `frontend/vercel.json` also declares an explicit `application/wasm` header and long-lived caching for emitted `.wasm` files.
 
-```bash
-docker build -f backend/Dockerfile.sandbox -t cforge-sandbox:gcc14-c11 backend
-```
+### Browser compiler loading
 
-Verify it exists:
+The Clang toolchain is loaded lazily by the Worker. The YoWASP package is a real LLVM/Clang toolchain compiled to WebAssembly; its runtime fetches the toolchain resources when first initialized. This is a large download compared with the application shell, so the initial page should remain usable while the compiler loads. citeturn4search1turn4search5
 
-```bash
-docker image inspect cforge-sandbox:gcc14-c11
-```
+### Legacy backend
 
-The public internet should never connect directly to this image/container. The backend is the only service that starts sandbox jobs.
-
-### 4. Docker setup
-
-The backend requires permission to invoke Docker. For a hardened deployment, use a dedicated compiler host rather than giving an internet-facing application unrestricted Docker daemon access.
-
-The sandbox containers themselves do not receive the Docker socket, host mounts, network connectivity, or elevated Linux capabilities.
-
-### 5. Environment variables
-
-Backend:
-
-```text
-PORT=3001
-FRONTEND_URL=https://${FRONTEND_DOMAIN}
-NODE_ENV=production
-SANDBOX_IMAGE=cforge-sandbox:gcc14-c11
-MAX_CODE_SIZE=262144
-MAX_INPUT_SIZE=65536
-MAX_OUTPUT_SIZE=1048576
-MAX_REQUEST_BODY_SIZE=384kb
-TIMEOUT_SECONDS=10
-COMPILE_TIMEOUT_SECONDS=10
-SANDBOX_MEMORY=256m
-SANDBOX_CPUS=1.0
-SANDBOX_PIDS_LIMIT=64
-SANDBOX_TMPFS_SIZE=32m
-RATE_LIMIT_WINDOW_SECONDS=60
-RATE_LIMIT_MAX_REQUESTS=30
-TRUST_PROXY=false
-```
-
-Frontend build-time variable:
-
-```text
-VITE_API_URL=https://${API_DOMAIN}
-```
-
-Never place passwords, private keys, Docker credentials, or other secrets in frontend environment variables.
-
-### 6. HTTPS
-
-Terminate TLS at a trusted reverse proxy/load balancer and forward only the API traffic to the private Node process.
-
-Use HTTPS for both:
-
-```text
-https://${FRONTEND_DOMAIN}
-https://${API_DOMAIN}
-```
-
-### 7. Custom domain
-
-Recommended DNS/application layout:
-
-```text
-${FRONTEND_DOMAIN}      -> frontend static hosting
-${API_DOMAIN}  -> HTTPS reverse proxy -> private CForge backend
-```
-
-Replace `${FRONTEND_DOMAIN}` with your actual registered domain before production. The example domain is intentionally documentation-only.
-
-### 8. API configuration
-
-Build the frontend with:
-
-```text
-VITE_API_URL=https://api.your-domain.example
-```
-
-Set the backend's:
-
-```text
-FRONTEND_URL=https://your-domain.example
-```
-
-The API CORS policy permits only the configured frontend origin.
+The existing Node.js/Express backend and `backend/Dockerfile.sandbox` can remain available for development or future server-side features, but they are not part of the public Vercel compiler flow. No Render, Railway, Oracle VM, VPS, host Docker daemon, or Docker-in-Docker service is required for normal browser compilation.
 
 ## PWA and offline behavior
 
-CForge provides a small service-worker-backed application shell and manifest. Cached UI pages may remain available without a network connection, but **C compilation and execution are not offline features**.
-
-When the browser is offline, the compiler UI reports:
-
-> You're offline. The compiler server cannot be reached.
+CForge provides a small service-worker-backed application shell and manifest. Cached UI pages may remain available without a network connection. The compiler toolchain itself is fetched and cached lazily by the browser runtime; after the compiler assets have been cached, ordinary compilation can continue without the legacy backend. A first-time compiler initialization still requires the toolchain assets to be reachable.
 
 ## Final Local Verification
 
