@@ -7,6 +7,22 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
   },
+  build: {
+    // @yowasp/clang ships four LLVM core .wasm modules, referenced via
+    // `new URL('./llvm.core*.wasm', import.meta.url)`. Three are well over
+    // Vite's default 4KB assetsInlineLimit and are emitted as real files —
+    // but llvm.core4.wasm is only 787 bytes, so by default Vite inlines
+    // *that one* as a `data:application/wasm;base64,...` URI directly in
+    // the built JS. The compiler then fetch()es that data: URL at runtime,
+    // which Content-Security-Policy's connect-src (correctly) blocks unless
+    // 'self' is widened to allow data:. Disabling inlining entirely keeps
+    // every WASM asset (including this small one) as a real same-origin
+    // file, so connect-src can stay 'self' with no data: exception needed.
+    // (No other asset in this app is affected: the PWA icons live in
+    // public/, which Vite always copies verbatim regardless of this
+    // setting.)
+    assetsInlineLimit: 0,
+  },
   worker: {
     // The compiler worker (frontend/src/compiler/wasm-worker.ts) is created
     // with `{ type: 'module' }` and dynamically `import()`s @yowasp/clang,
