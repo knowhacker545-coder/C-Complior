@@ -1,5 +1,11 @@
 import * as monaco from 'monaco-editor';
-import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
+import EditorWorker from './monaco-editor-worker?worker';
+
+type LoaderConfig = {
+  paths?: { vs?: string };
+  'vs/nls'?: { availableLanguages?: Record<string, string> };
+  monaco?: typeof monaco;
+};
 
 type MonacoEnvironment = {
   getWorker: (_moduleId: string, _label: string) => Worker;
@@ -9,15 +15,27 @@ const globalScope = globalThis as typeof globalThis & {
   MonacoEnvironment?: MonacoEnvironment;
 };
 
-globalScope.MonacoEnvironment ??= {
+let configuredMonaco: typeof monaco = monaco;
+
+const localLoader = {
+  config(options: LoaderConfig = {}) {
+    if (options.monaco) {
+      configuredMonaco = options.monaco;
+    }
+  },
+
+  init() {
+    return Promise.resolve(configuredMonaco);
+  },
+
+  __getMonacoInstance() {
+    return configuredMonaco;
+  },
+};
+
+globalScope.MonacoEnvironment = {
   getWorker: () => new EditorWorker(),
 };
 
-/**
- * Local replacement for @monaco-editor/loader's CDN-based runtime loader.
- * Monaco is imported from the installed ESM package and is bundled by Vite.
- */
-export const loader = {
-  config: () => undefined,
-  init: () => Promise.resolve(monaco),
-};
+export { localLoader as loader };
+export default localLoader;

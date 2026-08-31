@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { fileURLToPath, URL } from 'node:url'; 
+import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
   plugins: [react()],
@@ -10,6 +10,12 @@ export default defineConfig({
       // @monaco-editor/loader. Replace that runtime loader with a local
       // Vite-bundled implementation so Monaco never uses a remote loader.
       '@monaco-editor/loader': fileURLToPath(new URL('./src/monaco-local-loader.ts', import.meta.url)),
+      // Rolldown/Vite 8 can reject Monaco 0.56.0's package-export worker
+      // subpath when the ?worker query is applied. Resolve the actual worker
+      // file directly, while keeping it fully inside the installed package.
+      'monaco-editor-editor-worker': fileURLToPath(
+        new URL('./node_modules/monaco-editor/esm/vs/editor/editor.worker.js', import.meta.url),
+      ),
     },
   },
   server: {
