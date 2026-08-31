@@ -1,8 +1,17 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { fileURLToPath, URL } from 'node:url'; 
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      // @monaco-editor/react normally delegates initialization to
+      // @monaco-editor/loader. Replace that runtime loader with a local
+      // Vite-bundled implementation so Monaco never uses a remote loader.
+      '@monaco-editor/loader': fileURLToPath(new URL('./src/monaco-local-loader.ts', import.meta.url)),
+    },
+  },
   server: {
     port: 5173,
     strictPort: true,
