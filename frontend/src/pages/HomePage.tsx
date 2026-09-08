@@ -46,6 +46,7 @@ export default function HomePage() {
   const [executionTime, setExecutionTime] = useState<number | null>(null);
   const [health, setHealth] = useState<'checking' | 'online' | 'offline'>('checking');
   const [busy, setBusy] = useState(false);
+  const [isMobileEditor, setIsMobileEditor] = useState(() => window.matchMedia('(max-width: 820px)').matches);
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof Monaco | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -75,6 +76,14 @@ export default function HomePage() {
   }, []);
 
   const resetResult = useCallback(() => { setStdout(''); setStderr(''); setExitCode(null); setExecutionTime(null); }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 820px)');
+    const update = () => setIsMobileEditor(media.matches);
+    update();
+    media.addEventListener?.('change', update);
+    return () => media.removeEventListener?.('change', update);
+  }, []);
 
   useEffect(() => localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)), [settings]);
   useEffect(() => {
@@ -176,7 +185,7 @@ export default function HomePage() {
     </header>
     <div className="mobile-editor-tabs"><button className={mobilePanel==='editor'?'active':''} onClick={()=>setMobilePanel('editor')}><FileCode2 size={15}/> Code</button><button className={mobilePanel==='output'?'active':''} onClick={()=>setMobilePanel('output')}><span>▣</span> Output</button></div>
     <div className="compiler-workspace">
-      <section className={`editor-panel ${mobilePanel==='editor'?'mobile-active':''}`} aria-label="C code editor"><div className="panel-topbar"><span><span className="dot"/> main.c</span><span className={`health-pill ${health}`}>{health==='online'?<Check size={12}/>:null}{health==='checking'?'Compiler loading…':health==='online'?'Compiler ready':'Compiler unavailable'}</span></div><div className="monaco-wrap"><Editor height="100%" language="cforge-c" theme={document.documentElement.dataset.theme==='light'?'vs':'vs-dark'} value={code} onChange={(value)=>setCode(value??'')} beforeMount={beforeMount} onMount={onMount} options={{ fontSize:settings.fontSize, tabSize:settings.tabSize, insertSpaces:true, wordWrap:settings.wordWrap, minimap:{enabled:settings.minimap}, automaticLayout:true, folding:true, bracketPairColorization:{enabled:true}, renderLineHighlight:'all', scrollBeyondLastLine:false, smoothScrolling:false, padding:{top:12,bottom:20}, contextmenu:true, formatOnType:true, formatOnPaste:true, cursorBlinking:'smooth' }}/></div><div className="editor-status"><span>Ln 1, Col 1</span><span>Spaces: {settings.tabSize}</span><span>UTF-8</span><span>C11 / WASM</span><span className="save-state"><Save size={12}/> {settings.autoSave?'Auto-save on':'Auto-save off'}</span></div></section>
+      <section className={`editor-panel ${mobilePanel==='editor'?'mobile-active':''}`} aria-label="C code editor"><div className="panel-topbar"><span><span className="dot"/> main.c</span><span className={`health-pill ${health}`}>{health==='online'?<Check size={12}/>:null}{health==='checking'?'Compiler loading…':health==='online'?'Compiler ready':'Compiler unavailable'}</span></div><div className="monaco-wrap">{isMobileEditor ? <textarea className="mobile-code-editor" value={code} onChange={(e)=>setCode(e.target.value)} onKeyDown={(e)=>{ if (e.key === 'Tab') { e.preventDefault(); const target=e.currentTarget; const start=target.selectionStart; const end=target.selectionEnd; const spaces=' '.repeat(settings.tabSize); const next=code.slice(0,start)+spaces+code.slice(end); setCode(next); requestAnimationFrame(()=>{target.selectionStart=target.selectionEnd=start+spaces.length;}); } }} spellCheck={false} autoCapitalize="off" autoCorrect="off" inputMode="text" aria-label="C code editor" /> : <Editor height="100%" language="cforge-c" theme={document.documentElement.dataset.theme==='light'?'vs':'vs-dark'} value={code} onChange={(value)=>setCode(value??'')} beforeMount={beforeMount} onMount={onMount} options={{ fontSize:settings.fontSize, tabSize:settings.tabSize, insertSpaces:true, wordWrap:settings.wordWrap, minimap:{enabled:settings.minimap}, automaticLayout:true, folding:true, bracketPairColorization:{enabled:true}, renderLineHighlight:'all', scrollBeyondLastLine:false, smoothScrolling:false, padding:{top:12,bottom:20}, contextmenu:true, formatOnType:true, formatOnPaste:true, cursorBlinking:'smooth' }}/>}</div><div className="editor-status"><span>Ln 1, Col 1</span><span>Spaces: {settings.tabSize}</span><span>UTF-8</span><span>C11 / WASM</span><span className="save-state"><Save size={12}/> {settings.autoSave?'Auto-save on':'Auto-save off'}</span></div></section>
       <section className={`output-panel ${mobilePanel==='output'?'mobile-active':''}`} aria-label="Program output"><div className="output-header"><div><strong>Output</strong><span>Terminal</span></div><button className="tool-icon small" aria-label="Clear output" onClick={()=>{resetResult();setOutputState('ready');clearMarkers();}}><Trash2 size={15}/></button></div><div className="terminal"><div className={`terminal-state ${outputState}`}><span className="terminal-dot"/> {statusLabel(outputState)}</div>{stdout && <pre className="terminal-output">{stdout}</pre>}{stderr && <pre className="terminal-error">{stderr}</pre>}{executionTime !== null && <div className="terminal-meta">Exit code: {exitCode ?? '—'} · {executionTime.toFixed(3)}s</div>}{!stdout && !stderr && outputState==='ready' && <div className="terminal-empty">Run or compile your C program to see results here.</div>}</div><div className="input-panel"><div className="input-title"><span>Program Input</span><small>stdin</small></div><textarea value={input} onChange={(e)=>setInput(e.target.value)} placeholder="Enter input for your program…" spellCheck={false}/></div></section>
     </div>
     {settingsOpen && <EditorSettings settings={settings} setSettings={setSettings} onClose={()=>setSettingsOpen(false)} onClearOutput={()=>{resetResult(); clearMarkers(); setOutputState('ready');}}/>}
